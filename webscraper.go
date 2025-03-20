@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/agent-api/core"
-	"github.com/agent-api/core/pkg/agent"
-	"github.com/agent-api/core/types"
+	"github.com/agent-api/core/agent"
+	"github.com/agent-api/core/agent/bootstrap"
 	"github.com/agent-api/gsv"
+	"github.com/go-logr/logr"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 // WebScraperAgent extends the DefaultAgent with web scraping capabilities
 type WebScraperAgent struct {
-	*agent.DefaultAgent
+	*agent.Agent
 
 	config *WebScraperConfig
 }
@@ -26,7 +26,7 @@ type WebScraperAgent struct {
 type WebScraperConfig struct {
 	Provider  core.Provider
 	MaxSteps  int
-	Logger    *slog.Logger
+	Logger    *logr.Logger
 	UserAgent string
 }
 
@@ -49,15 +49,18 @@ func NewWebScraperAgent(config *WebScraperConfig) (*WebScraperAgent, error) {
 		config.UserAgent = "WebScraperAgent/1.0"
 	}
 
-	baseAgent := agent.NewAgent(&agent.NewAgentConfig{
-		Provider: config.Provider,
-		MaxSteps: config.MaxSteps,
-		Logger:   config.Logger,
-	})
+	baseAgent, err := agent.NewAgent(
+		bootstrap.WithProvider(config.Provider),
+		bootstrap.WithLogger(config.Logger),
+		bootstrap.WithMaxSteps(config.MaxSteps),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	scraper := &WebScraperAgent{
-		DefaultAgent: baseAgent,
-		config:       config,
+		Agent:  baseAgent,
+		config: config,
 	}
 
 	// Add web scraping specific tools
@@ -80,12 +83,12 @@ func (w *WebScraperAgent) initializeTools() error {
 		return err
 	}
 
-	fetchTool, err := types.WrapToolFunction(w.fetchWebPage)
+	fetchTool, err := core.WrapToolFunction(w.fetchWebPage)
 	if err != nil {
 		return err
 	}
 
-	if err := w.AddTool(types.Tool{
+	if err := w.AddTool(&core.Tool{
 		Name:                FetchWebPageTool,
 		Description:         "Fetches the content of a webpage",
 		WrappedToolFunction: fetchTool,
@@ -105,12 +108,12 @@ func (w *WebScraperAgent) initializeTools() error {
 		return err
 	}
 
-	extractContentTool, err := types.WrapToolFunction(w.extractContent)
+	extractContentTool, err := core.WrapToolFunction(w.extractContent)
 	if err != nil {
 		return err
 	}
 
-	if err := w.AddTool(types.Tool{
+	if err := w.AddTool(&core.Tool{
 		Name:                ExtractContentTool,
 		Description:         "",
 		WrappedToolFunction: extractContentTool,
